@@ -33,15 +33,15 @@ class LITmodel(LightningModule):
         self.save_hyperparameters(hparams)
 
         assert hparams['model_type'] == 'ScoreNet'
-        
         self.model = ScoreNet(**hparams) 
+
         # if isinstance(hparams,dict):
         #     hparams = Namespace(**hparams)
 
     def forward(self, x, t, *args, **kwargs) -> Any:
         score_std = self.model(x, t, *args, **kwargs) 
         # std = self.marginal_prob_std(t)[:, None, None, None]
-        # score = score_std / std  # Normalize output    ##  score = -grad_log_P \approx  - noise_est/std**2 =  -(x_noisy - x) / std**2  = - z /std   
+        # score = score_std / std  # Normalize output    ##  score = -grad_log_P \approx  - noise_pred/std**2 =  -(x_noisy - x) / std**2  = - z /std   
         return score_std
 
     @property
@@ -80,28 +80,27 @@ class LITmodel(LightningModule):
     #     return tensorize(self.hparams.sigma**t, device=device)
     
     def loss_fn(self, score, noise):
-        # loss = torch.mean(torch.sum((score - noise)**2, dim=(1,2,3))) 
-        loss = F.mse_loss(score, noise, reduction="mean") / 2
-        return loss
+        # return torch.mean(torch.sum((score - noise)**2, dim=(1,2,3))) 
+        return F.mse_loss(score, noise, reduction="mean") / 2
     
     def _step(self, data, batch_idx):
         eps=1e-5        # eps: A tolerance value for numerical stability.
-        
         images, labels = data
         
         t = torch.rand(images.shape[0], device=images.device) * (1. - eps) + eps  # choose a random time point
         noise_std = self.marginal_prob_std(t)[:, None, None, None]
-        noise0 = torch.randn_like(images)
-        noise = noise0 * noise_std
+        noise = noise_std * torch.randn_like(images)
         noisy_images = images + noise
-        
-        scores_std = self.model(noisy_images, t)   # score * std   \approx - noise_est/std =  -(x_noisy - x) /std  = - z    # score = - grad_log_P 
-        scores_std2 = scores_std * noise_std    # score * std**2 = - grad_log_P * std**2  \approx -noise_est
-        # loss = self.loss_fn(scores_std, noise0)  # original version
-        # loss = self.loss_fn(scores_std2, noise) 
-        loss = self.loss_fn(scores_std, noise)   # works best: model output directly predicts the noise
+        out = self.model(noisy_images, t)   # score * std   \approx - noise_pred/std =  -(x_noisy - x) /std  = - z    # score = - grad_log_P 
 
-        denoised_images = noisy_images - scores_std2  # ideally denoised image? 
+        noise_pred = out                         # = scores * std**2  = - grad_log_P * std**2 
+        loss = self.loss_fn(noise_pred, noise)   # works best: model output directly predicts the noise
+
+        ## original version: out = scores * std 
+        # noise_pred = out * noise_std           # = scores * std**2  = - grad_log_P * std**2 
+        # loss = self.loss_fn(noise_pred/noise_std, noise/noise_std)
+
+        denoised_images = noisy_images - noise_pred  # ideally denoised image? 
         
         batch = images.size(0) 
         psnr = psnr_fn(denoised_images, images)

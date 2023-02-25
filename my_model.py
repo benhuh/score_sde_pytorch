@@ -99,27 +99,15 @@ class ScoreNet(nn.Module):
     # self.marginal_prob_std = marginal_prob_std
   
   def forward(self, x, t): 
-    # Obtain the Gaussian random feature embedding for t   
-    embed = self.act(self.embed(t))    
-    # Encoding path
-    h1 = self.conv1(x)    
-    h1 += self.dense1(embed)
-    ## Incorporate information from t
-    ## Group normalization
-    h1 = self.act(self.gnorm1(h1))
-    h2 = self.conv2(h1) + self.dense2(embed)
-    h2 = self.act(self.gnorm2(h2))
-    h3 = self.conv3(h2) + self.dense3(embed)
-    h3 = self.act(self.gnorm3(h3))
-    h4 = self.conv4(h3) + self.dense4(embed)
-    h4 = self.act(self.gnorm4(h4))
+    embed = self.act(self.embed(t))        # Gaussian random feature time embedding   
+    h1 = self.conv1(x)  + self.dense1(embed);    h1 = self.act(self.gnorm1(h1))
+    h2 = self.conv2(h1) + self.dense2(embed);    h2 = self.act(self.gnorm2(h2))
+    h3 = self.conv3(h2) + self.dense3(embed);    h3 = self.act(self.gnorm3(h3))
+    h4 = self.conv4(h3) + self.dense4(embed);    h4 = self.act(self.gnorm4(h4))
 
-    # Decoding path
-    h = self.tconv4(h4) + self.dense5(embed)    ## Skip connection from the encoding path
-    h = self.act(self.tgnorm4(h))
-    h = self.tconv3(torch.cat([h, h3], dim=1)) + self.dense6(embed)
-    h = self.act(self.tgnorm3(h))
-    h = self.tconv2(torch.cat([h, h2], dim=1)) + self.dense7(embed)
-    h = self.act(self.tgnorm2(h))
-    h = self.tconv1(torch.cat([h, h1], dim=1))
+    # Decoding path     ## Skip connection from the encoding path
+    h = self.tconv4(h4) + self.dense5(embed) 
+    h = self.act(self.tgnorm4(h));    h = self.tconv3(torch.cat([h, h3], dim=1)) + self.dense6(embed)
+    h = self.act(self.tgnorm3(h));    h = self.tconv2(torch.cat([h, h2], dim=1)) + self.dense7(embed)
+    h = self.act(self.tgnorm2(h));    h = self.tconv1(torch.cat([h, h1], dim=1))
     return h  # score * std   \approx - noise_est/std =  -(x_noisy - x) /std  = - z    # score = - grad_log_P 
