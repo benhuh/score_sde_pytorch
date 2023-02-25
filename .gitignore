@@ -19,3 +19,6 @@ dist/
 
 # Other
 *.DS_Store
+data/
+lightning_logs/
+.ipynb_checkpoints/
